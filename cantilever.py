@@ -33,7 +33,9 @@ def main():
             lambda x: (F * a**2) / (6 * E * I) * (3 * x - a)
         ]
     )
-
+    
+    np.savez('cantilever_beam_deflection.npz', x_vals=x_vals, deflection=deflection)
+    
     plt.figure(figsize=(10, 5))
     plt.plot(x_vals, deflection, label="Deflection Curve", color="b")
     plt.xlabel("Position along the beam (m)")
