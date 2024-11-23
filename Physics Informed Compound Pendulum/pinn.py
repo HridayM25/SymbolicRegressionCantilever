@@ -71,7 +71,7 @@ class PINN(nn.Module):
         # Data loss: Mean squared error between predicted and true horizontal acceleration
         mse_loss = torch.mean((ax_pred - y_true) ** 2)
 
-        return mse_loss + physics_loss1
+        return mse_loss + 0
 
 
 
