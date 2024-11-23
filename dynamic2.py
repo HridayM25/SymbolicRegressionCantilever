@@ -53,20 +53,18 @@ ax.legend()
 
 def init():
     line.set_data([0, L], [0, 0])
-    marker.set_data(L, 0)
+    marker.set_data([L], [0])  # Fixed: Using sequence for both x and y
     return line, marker
 
 def update(frame):
     current_disp = displacement[frame]
     line.set_data([0, L], [0, current_disp])
-    marker.set_data(L, current_disp)
+    marker.set_data([L], [current_disp])  # Fixed: Using sequence for both x and y
     return line, marker
 
 ani = FuncAnimation(fig, update, frames=len(time), init_func=init, blit=True, interval=20)
-# ani.to_html5_video()
-# Add this before plt.show():
-ani.save('cantilever_beam.mp4', writer='ffmpeg', fps=30)
+
+# Save as GIF
+ani.save('cantilever_beam.gif', writer='pillow', fps=30)
+
 plt.show()
-
-
-

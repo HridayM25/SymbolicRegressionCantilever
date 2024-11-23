@@ -24,6 +24,9 @@ def get_acceleration_time_series(damping_coeff, t_max=0.9, dt=0.01):
     CM = np.mean(relative_vertices, axis=0)
     I = m * np.sum((relative_vertices)**2) / 3
     r = np.linalg.norm(CM)
+    
+    print(I, r)
+    print("LOG")
 
     time = np.arange(0, t_max, dt)
     time = time

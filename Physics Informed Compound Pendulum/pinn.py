@@ -43,20 +43,37 @@ class PINN(nn.Module):
         return self.hidden(x)
 
     def physics_loss(self, x, y_true):
+        # Predict angular displacement (theta) from the neural network
+        theta_pred = self.forward(x)
 
-        y_pred = self.forward(x)
-
-        dydx = torch.autograd.grad(
-            y_pred, x, grad_outputs=torch.ones_like(y_pred), create_graph=True
+        # Compute first and second derivatives of theta with respect to time (x)
+        dtheta_dx = torch.autograd.grad(
+            theta_pred, x, grad_outputs=torch.ones_like(theta_pred), create_graph=True
         )[0]
-        d2ydx2 = torch.autograd.grad(
-            dydx, x, grad_outputs=torch.ones_like(dydx), create_graph=True
+        d2theta_dx2 = torch.autograd.grad(
+            dtheta_dx, x, grad_outputs=torch.ones_like(dtheta_dx), create_graph=True
         )[0]
 
-        physics_term = d2ydx2 + dydx + 2 * y_pred  # Example ODE: y'' + y' + 2y = 0
-        physics_loss = torch.mean(physics_term ** 2)
-        mse_loss = torch.mean((y_pred - y_true) ** 2)
-        return mse_loss + physics_loss
+        # Pendulum parameters
+        I = 1.499535266666667  # Moment of inertia
+        c = 5.1234  # Damping coefficient
+        m = 16.1096 / 1000  # Mass of pendulum bob
+        g = 9.81  # Acceleration due to gravity
+        r = 7.6194196337749736 / 100  # Length to center of mass
+
+        # Compute horizontal acceleration a_x
+        ax_pred = r * d2theta_dx2 * torch.cos(theta_pred) - r * (dtheta_dx**2) * torch.sin(theta_pred)
+
+        # Physics constraint (pendulum equation with damping)
+        physics_term = I * d2theta_dx2 + c * dtheta_dx + m * g * r * torch.sin(theta_pred)
+        physics_loss1 = torch.mean(physics_term**2)
+
+        # Data loss: Mean squared error between predicted and true horizontal acceleration
+        mse_loss = torch.mean((ax_pred - y_true) ** 2)
+
+        return mse_loss + physics_loss1
+
+
 
 
 model = PINN()
@@ -77,35 +94,69 @@ for epoch in range(num_epochs):
     if (epoch + 1) % 500 == 0:
         print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {loss.item():.6f}")
 
+# Enable gradients for X_train_tensor and X_test_tensor
+X_train_tensor.requires_grad = True
+X_test_tensor.requires_grad = True
+
 model.eval()
-with torch.no_grad():
-    y_pred_train = model(X_train_tensor).detach().numpy()
-    y_pred_test = model(X_test_tensor).detach().numpy()
 
+# Predictions for theta (keep in computation graph)
+theta_pred_train = model(X_train_tensor)  # Output is tied to X_train_tensor
+theta_pred_test = model(X_test_tensor)   # Output is tied to X_test_tensor
 
-y_pred_train = scaler_y.inverse_transform(y_pred_train)
-y_pred_test = scaler_y.inverse_transform(y_pred_test)
+# First derivative: dtheta/dt
+dtheta_train = torch.autograd.grad(
+    theta_pred_train, X_train_tensor, grad_outputs=torch.ones_like(theta_pred_train), create_graph=True
+)[0]
+dtheta_test = torch.autograd.grad(
+    theta_pred_test, X_test_tensor, grad_outputs=torch.ones_like(theta_pred_test), create_graph=True
+)[0]
 
+# Second derivative: d2theta/dt2
+d2theta_train = torch.autograd.grad(
+    dtheta_train, X_train_tensor, grad_outputs=torch.ones_like(dtheta_train), create_graph=True
+)[0]
+d2theta_test = torch.autograd.grad(
+    dtheta_test, X_test_tensor, grad_outputs=torch.ones_like(dtheta_test), create_graph=True
+)[0]
 
+# Pendulum parameters
+r = 7.6194196337749736 / 100  # Length to center of mass
+
+# Compute horizontal acceleration a_x
+ax_pred_train = r * d2theta_train * torch.cos(theta_pred_train) - r * (dtheta_train**2) * torch.sin(theta_pred_train)
+ax_pred_test = r * d2theta_test * torch.cos(theta_pred_test) - r * (dtheta_test**2) * torch.sin(theta_pred_test)
+
+# Detach and convert to NumPy after all calculations
+ax_pred_train = ax_pred_train.detach().numpy()
+ax_pred_test = ax_pred_test.detach().numpy()
+
+# Scale back to the original range
+ax_pred_train = scaler_y.inverse_transform(ax_pred_train)
+ax_pred_test = scaler_y.inverse_transform(ax_pred_test)
+
+# Plotting
 plt.figure(figsize=(12, 6))
 
-
+# Scatter plots for training and testing data
 plt.scatter(X_train, y_train, color="blue", label="Training Data", alpha=0.7)
 plt.scatter(X_test, y_test, color="green", label="Testing Data", alpha=0.7)
 
-
+# Sort indices for a smooth curve
 sorted_indices_train = np.argsort(X_train.values.squeeze())
 sorted_indices_test = np.argsort(X_test.values.squeeze())
+
+# Predicted curves
 plt.plot(
     X_train.values[sorted_indices_train],
-    y_pred_train[sorted_indices_train],
+    ax_pred_train[sorted_indices_train],
     color="red",
     linewidth=2,
     label="PINN Fit (Train)",
 )
 plt.plot(
     X_test.values[sorted_indices_test],
-    y_pred_test[sorted_indices_test],
+    ax_pred_test[sorted_indices_test],
     color="purple",
     linewidth=2,
     linestyle="--",
